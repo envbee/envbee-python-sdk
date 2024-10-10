@@ -91,7 +91,9 @@ class Envbee:
             if content.status_code == 200:
                 return content.json()
             else:
-                raise RequestError(content.status_code, "Failed request")
+                raise RequestError(
+                    content.status_code, f"Failed request: {content.text}"
+                )
         except requests.exceptions.Timeout:
             raise RequestTimeoutError(
                 f"Request to {url} timed out after {timeout} seconds"
@@ -139,6 +141,34 @@ class Envbee:
             values = [{"name": k, "value": reference[k]} for k in list(reference)]
         return values
 
+    def get_variable_by_id(self, id: int) -> str:
+        """Retrieve a variable's value by its id.
+
+        This method attempts to fetch the variable from the API, and if it fails, it retrieves
+        the value from the local cache.
+
+        Args:
+            id (int): The id of the variable to retrieve.
+
+        Returns:
+            str: The value of the variable.
+        """
+        url_path = f"/api/variables/{id}"
+        hmac_header = self._generate_hmac_header(url_path)
+        final_url = f"{self.__base_url}{url_path}"
+        variable_name = None
+        try:
+            result = self._send_request(final_url, hmac_header)
+            value: str = result.get("value")
+            variable_name: str = result.get("name")
+            self._cache_variable(variable_name, value)
+            return value
+        except Exception as ex:
+            # TODO handle cache by id
+            if variable_name:
+                return self._get_variable_from_cache(variable_name)
+            raise ex
+
     def get_variable(self, variable_name: str) -> str:
         """Retrieve a variable's value by its name.
 
@@ -151,7 +181,7 @@ class Envbee:
         Returns:
             str: The value of the variable.
         """
-        url_path = f"/api/variables/{variable_name}"
+        url_path = f"/api/variables-values/{variable_name}"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:

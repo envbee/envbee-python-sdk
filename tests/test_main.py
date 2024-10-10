@@ -89,3 +89,18 @@ class Test(TestCase):
             "VALUE_CACHE",
             list(filter(lambda x: x["name"] == "V1", variables))[0]["value"],
         )
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_get_variable_by_id(self, mock_get: MagicMock):
+        """Test getting variable by id."""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "id": 1,
+            "name": "DB_HOST",
+            "type": "STRING",
+            "description": "Where the database is located",
+            "value": "192.168.1.113",
+        }
+
+        eb = Envbee("1__local", b"key---1")
+        self.assertEqual("192.168.1.113", eb.get_variable_by_id(1))
