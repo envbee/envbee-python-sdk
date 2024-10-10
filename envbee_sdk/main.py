@@ -151,7 +151,7 @@ class Envbee:
         Returns:
             str: The value of the variable.
         """
-        url_path = f"/api/variable/{variable_name}"
+        url_path = f"/api/variables/{variable_name}"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:
