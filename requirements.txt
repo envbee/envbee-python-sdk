@@ -1,2 +1,3 @@
 diskcache
 platformdirs
+requests
