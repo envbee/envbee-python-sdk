@@ -153,7 +153,7 @@ class Envbee:
         Returns:
             str: The value of the variable.
         """
-        url_path = f"/api/variables-values/{variable_name}"
+        url_path = f"/variables-values/{variable_name}"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:
@@ -177,7 +177,7 @@ class Envbee:
         Returns:
             list[dict]: A list of dictionaries containing variables and their values.
         """
-        url_path = "/api/variables"
+        url_path = "/variables"
         params = {}
         if offset:
             params["offset"] = offset

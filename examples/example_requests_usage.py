@@ -13,7 +13,7 @@ import requests
 api_key = "1__local"  # Application and Environment ID
 api_secret = b"key---1"  # Secret key for authentication
 url_server = "http://app.envbee.dev"  # Base URL for the API
-url_path = b"/api/variables"  # API endpoint for fetching variables
+url_path = b"/variables"  # API endpoint for fetching variables
 
 # Create HMAC object for authentication
 hmac_obj = hmac.new(api_secret, digestmod=hashlib.sha256)

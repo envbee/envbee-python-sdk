@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="envbee-sdk",
-    version="0.1.3",
+    version="0.1.4",
     author="envbee",
     author_email="info@envbee.dev",
     description="envbee SDK for Python",
@@ -12,6 +12,7 @@ setup(
     install_requires=[
         "diskcache",
         "platformdirs",
+        "requests",
     ],
     include_package_data=True,
     classifiers=[
