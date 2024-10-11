@@ -1,1 +1,1 @@
-from .main import Envbee
+from .main import Envbee  # noqa: F401

@@ -3,6 +3,7 @@ class RequestTimeoutError(Exception):
         self.message = message
         super().__init__(self.message)
 
+
 class RequestError(Exception):
     def __init__(self, status_code, message="Request error"):
         self.status_code = status_code
