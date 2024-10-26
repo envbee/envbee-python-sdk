@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="envbee-sdk",
-    version="1.1.0",
+    version="1.2.0",
     author="envbee",
     author_email="info@envbee.dev",
     description="envbee SDK for Python",
