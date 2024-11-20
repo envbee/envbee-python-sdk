@@ -1,8 +1,8 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 
 setup(
     name="envbee-sdk",
-    version="1.2.0",
+    version="1.3.0",
     author="envbee",
     author_email="info@envbee.dev",
     description="envbee SDK for Python",
@@ -15,6 +15,7 @@ setup(
         "requests",
     ],
     include_package_data=True,
+    packages=find_packages(exclude=["*.pyc", "__pycache__", "*/__pycache__"]),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

@@ -5,7 +5,10 @@
 
 """Utility classes and functions."""
 
+import logging
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+logger = logging.getLogger(__name__)
 
 
 def add_querystring(url: str, params: dict):
@@ -21,11 +24,19 @@ def add_querystring(url: str, params: dict):
     Returns:
         str: The updated URL with the added query parameters.
     """
-    url_parts = list(urlparse(url))
+    try:
+        url_parts = list(urlparse(url))
 
-    query = dict(parse_qs(url_parts[4]))  # url_parts[4] is actual query string
-    query.update(params)
+        query = dict(parse_qs(url_parts[4]))  # url_parts[4] is actual query string
+        query.update(params)
+        url_parts[4] = urlencode(query, doseq=True)
+        updated_url = urlunparse(url_parts)
+        return updated_url
 
-    url_parts[4] = urlencode(query, doseq=True)
-
-    return urlunparse(url_parts)
+    except Exception as e:
+        logger.error(
+            "Error occurred while adding query parameters to URL.", exc_info=True
+        )
+        logger.error("Original URL: %s", url)
+        logger.error("Parameters to add: %s", params)
+        raise e

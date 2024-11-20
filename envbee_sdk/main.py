@@ -13,6 +13,7 @@ and manage environment variables through secure authenticated requests.
 import hashlib
 import hmac
 import json
+import logging
 import time
 
 import platformdirs
@@ -21,6 +22,8 @@ from diskcache import Cache
 
 from .exceptions.envbee_exceptions import RequestError, RequestTimeoutError
 from .utils import add_querystring
+
+logger = logging.getLogger(__name__)
 
 
 class Envbee:
@@ -36,9 +39,11 @@ class Envbee:
             api_secret (bytes | bytearray): The secret key used for authenticating API requests.
             base_url (str, optional): The base URL for the API. Defaults to a predefined URL if not provided.
         """
+        logger.debug("Initializing Envbee client.")
         self.__base_url = base_url or self.__BASE_URL
         self.__api_key = api_key
         self.__api_secret = api_secret
+        logger.info("Envbee client initialized with base URL: %s", self.__base_url)
 
     def _generate_hmac_header(self, url_path: str) -> str:
         """Generate an HMAC authentication header for the specified URL path.
@@ -52,17 +57,23 @@ class Envbee:
         Returns:
             str: The formatted HMAC authorization header.
         """
-        hmac_obj = hmac.new(self.__api_secret, digestmod=hashlib.sha256)
-        current_time = str(int(time.time() * 1000))
-        hmac_obj.update(current_time.encode("utf-8"))
-        hmac_obj.update(b"GET")
-        hmac_obj.update(url_path.encode("utf-8"))
-        content = json.dumps({}).encode("utf-8")
-        content_hash = hashlib.md5()
-        content_hash.update(content)
-        hmac_obj.update(content_hash.hexdigest().encode("utf-8"))
-        auth_header = "HMAC %s:%s" % (current_time, hmac_obj.hexdigest())
-        return auth_header
+        logger.debug("Generating HMAC header for URL path: %s", url_path)
+        try:
+            hmac_obj = hmac.new(self.__api_secret, digestmod=hashlib.sha256)
+            current_time = str(int(time.time() * 1000))
+            hmac_obj.update(current_time.encode("utf-8"))
+            hmac_obj.update(b"GET")
+            hmac_obj.update(url_path.encode("utf-8"))
+            content = json.dumps({}).encode("utf-8")
+            content_hash = hashlib.md5()
+            content_hash.update(content)
+            hmac_obj.update(content_hash.hexdigest().encode("utf-8"))
+            auth_header = "HMAC %s:%s" % (current_time, hmac_obj.hexdigest())
+            logger.debug("HMAC header generated successfully.")
+            return auth_header
+        except Exception as e:
+            logger.error("Error generating HMAC header: %s", e, exc_info=True)
+            raise
 
     def _send_request(self, url: str, hmac_header: str, timeout: int = 2):
         """Send a GET request to the specified URL with the given HMAC header.
@@ -82,22 +93,36 @@ class Envbee:
             RequestError: If the response status code indicates a failed request.
             RequestTimeoutError: If the request times out.
         """
+        logger.debug("Sending request to URL: %s", url)
         try:
-            content = requests.get(
+            response = requests.get(
                 url,
                 headers={"Authorization": hmac_header, "x-api-key": self.__api_key},
                 timeout=timeout,
             )
-            if content.status_code == 200:
-                return content.json()
+            logger.debug("Received response with status code: %s", response.status_code)
+            if response.status_code == 200:
+                logger.debug("Request successful. Returning JSON response.")
+                return response.json()
             else:
+                logger.error(
+                    "Request to failed with status code: %s. Response text: %s",
+                    response.status_code,
+                    response.text,
+                )
                 raise RequestError(
-                    content.status_code, f"Failed request: {content.text}"
+                    response.status_code, f"Failed request: {response.text}"
                 )
         except requests.exceptions.Timeout:
+            logger.error("Request to %s timed out after %d seconds", url, timeout)
             raise RequestTimeoutError(
                 f"Request to {url} timed out after {timeout} seconds"
             )
+        except Exception as e:
+            logger.critical(
+                "Unexpected error during request to %s: %s", url, e, exc_info=True
+            )
+            raise e
 
     def _cache_variable(self, variable_name: str, variable_value: str):
         """Cache a variable locally for future retrieval.
@@ -106,11 +131,18 @@ class Envbee:
             variable_name (str): The name of the variable to cache.
             variable_value (str): The value of the variable to cache.
         """
-        app_cache_dir = platformdirs.user_cache_dir(
-            appname=self.__api_key, appauthor="envbee"
-        )
-        with Cache(app_cache_dir) as reference:
-            reference.set(variable_name, variable_value)
+        logger.debug("Caching variable: %s", variable_name)
+        try:
+            app_cache_dir = platformdirs.user_cache_dir(
+                appname=self.__api_key, appauthor="envbee"
+            )
+            with Cache(app_cache_dir) as reference:
+                reference.set(variable_name, variable_value)
+            logger.debug("Variable %s cached successfully.", variable_name)
+        except Exception as e:
+            logger.error(
+                "Error caching variable %s: %s", variable_name, e, exc_info=True
+            )
 
     def _get_variable_from_cache(self, variable_name: str) -> str:
         """Retrieve a variable's value from the local cache.
@@ -121,11 +153,25 @@ class Envbee:
         Returns:
             str: The cached value of the variable, or None if not found.
         """
-        app_cache_dir = platformdirs.user_cache_dir(
-            appname=self.__api_key, appauthor="envbee"
-        )
-        with Cache(app_cache_dir) as reference:
-            return reference.get(variable_name)
+        logger.debug("Retrieving variable from cache: %s", variable_name)
+        try:
+            app_cache_dir = platformdirs.user_cache_dir(
+                appname=self.__api_key, appauthor="envbee"
+            )
+            with Cache(app_cache_dir) as reference:
+                value = reference.get(variable_name)
+            if value:
+                logger.debug("Variable %s retrieved from cache.", variable_name)
+            else:
+                logger.warning("Variable %s not found in cache.", variable_name)
+            return value
+        except Exception as e:
+            logger.error(
+                "Error retrieving variable %s from cache: %s",
+                variable_name,
+                e,
+                exc_info=True,
+            )
 
     def _get_variables_from_cache(self) -> list[dict]:
         """Retrieve all cached variables and their values.
@@ -133,13 +179,21 @@ class Envbee:
         Returns:
             list[dict]: A list of dictionaries containing names and values of cached variables.
         """
-        app_cache_dir = platformdirs.user_cache_dir(
-            appname=self.__api_key, appauthor="envbee"
-        )
-        values = []
-        with Cache(app_cache_dir) as reference:
-            values = [{"name": k, "value": reference[k]} for k in list(reference)]
-        return values
+        logger.debug("Retrieving all variables from cache")
+        try:
+            app_cache_dir = platformdirs.user_cache_dir(
+                appname=self.__api_key, appauthor="envbee"
+            )
+            values = []
+            with Cache(app_cache_dir) as reference:
+                values = [{"name": k, "value": reference[k]} for k in list(reference)]
+            return values
+        except Exception as e:
+            logger.error(
+                "Error retrieving all variables from cache: %s",
+                e,
+                exc_info=True,
+            )
 
     def get_variable(self, variable_name: str) -> str:
         """Retrieve a variable's value by its name.
@@ -153,15 +207,20 @@ class Envbee:
         Returns:
             str: The value of the variable.
         """
+        logger.debug("Fetching variable: %s", variable_name)
         url_path = f"/variables-values/{variable_name}"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:
-            result = self._send_request(final_url, hmac_header)
-            value: str = result.get("value")
-            self._cache_variable(variable_name, value)
-            return value
+            value = self._send_request(final_url, hmac_header)
+            self._cache_variable(variable_name, value.get("value"))
+            logger.debug("Variable %s fetched successfully.", variable_name)
+            return value.get("value")
         except Exception:
+            logger.warning(
+                "Failed to fetch variable %s from API. Falling back to cache.",
+                variable_name,
+            )
             return self._get_variable_from_cache(variable_name)
 
     def get_variables(self, offset: int = None, limit: int = None) -> list[dict]:
@@ -177,6 +236,7 @@ class Envbee:
         Returns:
             list[dict]: A list of dictionaries containing variables and their values.
         """
+        logger.debug("Fetching variables with offset=%s, limit=%s", offset, limit)
         url_path = "/variables"
         params = {}
         if offset:
@@ -185,15 +245,15 @@ class Envbee:
             params["limit"] = limit
 
         url_path = add_querystring(url_path, params)
-
         hmac_header = self._generate_hmac_header(url_path)
-
         final_url = f"{self.__base_url}{url_path}"
         try:
-            result = self._send_request(final_url, hmac_header)
-            data: dict = result.get("data")
+            data = self._send_request(final_url, hmac_header).get("data", [])
             for v in data:
                 self._cache_variable(v["name"], v["value"])
+            logger.debug("Fetched and cached %d variables.", len(data))
             return data
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to fetch variables from API: %s", e, exc_info=True)
+            logger.warning("Falling back to cached variables.")
             return self._get_variables_from_cache()

@@ -34,6 +34,27 @@ value = eb.get_variable("VariableName")
 variables = eb.get_variables()
 ```
 
+### Logging
+
+The root logger name is "envbee_sdk". You can configure the default logging level for the SDK and handle logs as needed. Here's an example of how to set up basic logging for your application using the SDK:
+
+```python
+# Basic logging configuration for your application
+logging.basicConfig(
+    level=logging.ERROR,  # Set default log level for the root logger
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],  # Send logs to stdout
+)
+
+# Get the SDK logger (specific to envbee_sdk)
+sdk_logger = logging.getLogger("envbee_sdk")
+sdk_logger.setLevel(logging.DEBUG)  # You can set the SDK logger to DEBUG for detailed logs
+
+# Example usage within the SDK
+sdk_logger.debug("This is a debug message from the SDK.")
+sdk_logger.info("Informational message from the SDK.")
+```
+
 ## Methods
 
 ### `get_variable(variable_name: str) -> str`

@@ -2,3 +2,4 @@ wheel
 twine
 setuptools
 tqdm
+build
