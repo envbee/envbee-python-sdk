@@ -1,4 +1,5 @@
 import logging
+from dataclasses import asdict
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -57,10 +58,11 @@ class Test(TestCase):
         }
 
         eb = Envbee("1__local", b"key---1")
-        variables = eb.get_variables()
+        variables, md = eb.get_variables()
         self.assertEqual(
             "VALUE1", list(filter(lambda x: x["name"] == "VAR1", variables))[0]["value"]
         )
+        self.assertAlmostEqual({"limit": 1, "offset": 10, "total": 100}, asdict(md))
 
     @patch("envbee_sdk.main.requests.get")
     def test_get_variables_cache(self, mock_get: MagicMock):
@@ -75,17 +77,21 @@ class Test(TestCase):
         }
 
         eb = Envbee("1__local", b"key---1")
-        variables = eb.get_variables()
+        variables, md = eb.get_variables()
         self.assertEqual(
             "VALUE_CACHE",
             list(filter(lambda x: x["name"] == "V1", variables))[0]["value"],
         )
+        self.assertAlmostEqual({"limit": 50, "offset": 0, "total": 2}, asdict(md))
 
         mock_get.return_value.status_code = 500
         mock_get.return_value.json.return_value = {}
         eb = Envbee("1__local", b"key---1")
-        variables = eb.get_variables()
+        variables, md = eb.get_variables()
         self.assertEqual(
             "VALUE_CACHE",
             list(filter(lambda x: x["name"] == "V1", variables))[0]["value"],
+        )
+        self.assertAlmostEqual(
+            {"limit": 50, "offset": 0, "total": md.total}, asdict(md)
         )

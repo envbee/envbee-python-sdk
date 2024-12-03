@@ -31,7 +31,7 @@ eb = Envbee(api_key="your_api_key", api_secret=b"your_api_secret")
 value = eb.get_variable("VariableName")
 
 # Retrieve multiple variables
-variables = eb.get_variables()
+variables, metadata = eb.get_variables()
 ```
 
 ### Logging
@@ -61,7 +61,7 @@ sdk_logger.info("Informational message from the SDK.")
 
 Fetches the value of a variable by its name. If the API request fails, it retrieves the value from the cache.
 
-### `get_variables(offset: int = None, limit: int = None) -> list[dict]`
+### `get_variables(offset: int = None, limit: int = None) -> tuple[list[dict], Metadata]`
 
 Fetches a list of variables from the API with optional pagination parameters.
 
