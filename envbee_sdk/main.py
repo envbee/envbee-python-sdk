@@ -29,14 +29,9 @@ logger = logging.getLogger(__name__)
 
 class Envbee:
     __BASE_URL: str = "https://api.envbee.dev"
-    __VERSION: str = "v1"
 
     def __init__(
-        self,
-        api_key: str,
-        api_secret: bytes | bytearray,
-        base_url: str = None,
-        version: str = None,
+        self, api_key: str, api_secret: bytes | bytearray, base_url: str = None
     ) -> None:
         """Initialize the API client with necessary credentials.
 
@@ -44,11 +39,9 @@ class Envbee:
             api_key (str): The unique identifier for the API.
             api_secret (bytes | bytearray): The secret key used for authenticating API requests.
             base_url (str, optional): The base URL for the API. Defaults to https://api.envbee.dev URL if not provided.
-            version (str, optional): The version to use. Defaults to "v1" if not provided.
         """
         logger.debug("Initializing Envbee client.")
         self.__base_url = base_url or self.__BASE_URL
-        self.__version = version or self.__VERSION
         self.__api_key = api_key
         self.__api_secret = api_secret
         logger.info("Envbee client initialized with base URL: %s", self.__base_url)
@@ -234,7 +227,7 @@ class Envbee:
             str: The value of the variable.
         """
         logger.debug("Fetching variable: %s", variable_name)
-        url_path = f"/{self.__version}/variables-values/{variable_name}"
+        url_path = f"/v1/variables-values/{variable_name}"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:
@@ -265,7 +258,7 @@ class Envbee:
             list[dict]: A list of dictionaries containing variables and their values.
         """
         logger.debug("Fetching variables with offset=%s, limit=%s", offset, limit)
-        url_path = f"/{self.__version}/variables"
+        url_path = "/v1/variables"
         params = {}
         if offset:
             params["offset"] = offset
