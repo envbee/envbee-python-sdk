@@ -65,9 +65,13 @@ Fetches the value of a variable by its name. If the API request fails, it retrie
 
 Fetches a list of variables from the API with optional pagination parameters.
 
-### Caching
+## Caching
 
-The SDK uses local caching to store variable values, improving efficiency by reducing API calls.
+The SDK uses a local cache to store variable values as a failsafe mechanism. The cache is updated with each successful endpoint request and serves as a fallback when the network or Internet connection is temporarily unavailable. Currently, the data is stored unencrypted, but encryption will be implemented in future releases.
+
+## API Documentation
+
+For more details on the available API endpoints and their usage, check [the official API docs](https://docs.envbee.dev).
 
 ## License
 

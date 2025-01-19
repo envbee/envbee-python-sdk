@@ -23,7 +23,10 @@ class Test(TestCase):
     def test_get_variable_simple(self, mock_get: MagicMock):
         """Test getting a variable successfully from the API."""
         mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"name": "Var1", "value": "Value1"}
+        mock_get.return_value.json.return_value = {
+            "name": "Var1",
+            "content": {"value": "Value1"},
+        }
 
         eb = Envbee("1__local", b"key---1")
         self.assertEqual("Value1", eb.get_variable("Var1"))
@@ -34,7 +37,7 @@ class Test(TestCase):
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
             "name": "Var1",
-            "value": "ValueFromCache",
+            "content": {"value": "ValueFromCache"},
         }
 
         eb = Envbee("1__local", b"key---1")
@@ -52,15 +55,16 @@ class Test(TestCase):
         mock_get.return_value.json.return_value = {
             "metadata": {"limit": 1, "offset": 10, "total": 100},
             "data": [
-                {"name": "VAR1", "value": "VALUE1"},
-                {"name": "VAR2", "value": [1, 2, 3]},
+                {"name": "VAR1", "content": {"value": "VALUE1"}},
+                {"name": "VAR2", "content": {"value": [1, 2, 3]}},
             ],
         }
 
         eb = Envbee("1__local", b"key---1")
         variables, md = eb.get_variables()
         self.assertEqual(
-            "VALUE1", list(filter(lambda x: x["name"] == "VAR1", variables))[0]["value"]
+            {"value": "VALUE1"},
+            list(filter(lambda x: x["name"] == "VAR1", variables))[0]["content"],
         )
         self.assertAlmostEqual({"limit": 1, "offset": 10, "total": 100}, asdict(md))
 
@@ -71,16 +75,16 @@ class Test(TestCase):
         mock_get.return_value.json.return_value = {
             "metadata": {"limit": 50, "offset": 0, "total": 2},
             "data": [
-                {"name": "V1", "value": "VALUE_CACHE"},
-                {"name": "V2", "value": [3, 4, 5]},
+                {"name": "V1", "content": {"value": "VALUE_CACHE"}},
+                {"name": "V2", "content": {"value": [3, 4, 5]}},
             ],
         }
 
         eb = Envbee("1__local", b"key---1")
         variables, md = eb.get_variables()
         self.assertEqual(
-            "VALUE_CACHE",
-            list(filter(lambda x: x["name"] == "V1", variables))[0]["value"],
+            {"value": "VALUE_CACHE"},
+            list(filter(lambda x: x["name"] == "V1", variables))[0]["content"],
         )
         self.assertAlmostEqual({"limit": 50, "offset": 0, "total": 2}, asdict(md))
 
@@ -89,8 +93,8 @@ class Test(TestCase):
         eb = Envbee("1__local", b"key---1")
         variables, md = eb.get_variables()
         self.assertEqual(
-            "VALUE_CACHE",
-            list(filter(lambda x: x["name"] == "V1", variables))[0]["value"],
+            {"value": "VALUE_CACHE"},
+            list(filter(lambda x: x["name"] == "V1", variables))[0]["content"],
         )
         self.assertAlmostEqual(
             {"limit": 50, "offset": 0, "total": md.total}, asdict(md)

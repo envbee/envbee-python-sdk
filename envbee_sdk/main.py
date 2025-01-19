@@ -125,12 +125,12 @@ class Envbee:
             )
             raise e
 
-    def _cache_variable(self, variable_name: str, variable_value: str):
+    def _cache_variable(self, variable_name: str, variable_content: dict):
         """Cache a variable locally for future retrieval.
 
         Args:
             variable_name (str): The name of the variable to cache.
-            variable_value (str): The value of the variable to cache.
+            variable_content (str): The content of the variable to cache.
         """
         logger.debug("Caching variable: %s", variable_name)
         try:
@@ -138,21 +138,21 @@ class Envbee:
                 appname=self.__api_key, appauthor="envbee"
             )
             with Cache(app_cache_dir) as reference:
-                reference.set(variable_name, variable_value)
+                reference.set(variable_name, variable_content)
             logger.debug("Variable %s cached successfully.", variable_name)
         except Exception as e:
             logger.error(
                 "Error caching variable %s: %s", variable_name, e, exc_info=True
             )
 
-    def _get_variable_from_cache(self, variable_name: str) -> str:
-        """Retrieve a variable's value from the local cache.
+    def _get_variable_from_cache(self, variable_name: str) -> str | int | bool:
+        """Retrieve a variable's content from the local cache.
 
         Args:
             variable_name (str): The name of the variable to retrieve.
 
         Returns:
-            str: The cached value of the variable, or None if not found.
+            str: The cached content of the variable, or None if not found.
         """
         logger.debug("Retrieving variable from cache: %s", variable_name)
         try:
@@ -160,12 +160,12 @@ class Envbee:
                 appname=self.__api_key, appauthor="envbee"
             )
             with Cache(app_cache_dir) as reference:
-                value = reference.get(variable_name)
-            if value:
+                content = reference.get(variable_name)
+            if content:
                 logger.debug("Variable %s retrieved from cache.", variable_name)
             else:
                 logger.warning("Variable %s not found in cache.", variable_name)
-            return value
+            return content.get("value")
         except Exception as e:
             logger.error(
                 "Error retrieving variable %s from cache: %s",
@@ -195,7 +195,7 @@ class Envbee:
             )
             with Cache(app_cache_dir) as reference:
                 all_values = [
-                    {"name": k, "value": reference[k]} for k in list(reference)
+                    {"name": k, "content": reference[k]} for k in list(reference)
                 ]
 
                 # Apply offset and limit
@@ -214,7 +214,7 @@ class Envbee:
             )
             return [], Metadata()
 
-    def get_variable(self, variable_name: str) -> str:
+    def get_variable(self, variable_name: str) -> str | int | bool:
         """Retrieve a variable's value by its name.
 
         This method attempts to fetch the variable from the API, and if it fails, it retrieves
@@ -224,17 +224,17 @@ class Envbee:
             variable_name (str): The name of the variable to retrieve.
 
         Returns:
-            str: The value of the variable.
+            The value of the variable.
         """
         logger.debug("Fetching variable: %s", variable_name)
         url_path = f"/v1/variables-values/{variable_name}"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:
-            value = self._send_request(final_url, hmac_header)
-            self._cache_variable(variable_name, value.get("value"))
+            response = self._send_request(final_url, hmac_header)
+            self._cache_variable(variable_name, response.get("content"))
             logger.debug("Variable %s fetched successfully.", variable_name)
-            return value.get("value")
+            return response.get("content").get("value")
         except Exception:
             logger.warning(
                 "Failed to fetch variable %s from API. Falling back to cache.",
@@ -273,7 +273,7 @@ class Envbee:
             metadata = Metadata(**result_json.get("metadata", {}))
             data = result_json.get("data", [])
             for v in data:
-                self._cache_variable(v["name"], v["value"])
+                self._cache_variable(v["name"], v["content"])
             logger.debug("Fetched and cached %d variables.", len(data))
             return data, metadata
         except Exception as e:
