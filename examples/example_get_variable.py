@@ -12,6 +12,6 @@ api_secret = b"key---1"  # Secret key for authentication
 eb = Envbee(api_key, api_secret)
 
 # Get a specific variable using the SDK
-var1 = eb.get_variable("DB_HOST")
+var1 = eb.get("DB_HOST")
 print("Using envbee SDK - get_variable")
 print(var1)

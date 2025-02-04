@@ -28,7 +28,7 @@ from envbee_sdk.main import Envbee
 eb = Envbee(api_key="your_api_key", api_secret=b"your_api_secret")
 
 # Retrieve a variable
-value = eb.get_variable("VariableName")
+value = eb.get("VariableName")
 
 # Retrieve multiple variables
 variables, metadata = eb.get_variables()
@@ -57,7 +57,7 @@ sdk_logger.info("Informational message from the SDK.")
 
 ## Methods
 
-### `get_variable(variable_name: str) -> str`
+### `get(variable_name: str) -> any`
 
 Fetches the value of a variable by its name. If the API request fails, it retrieves the value from the cache.
 

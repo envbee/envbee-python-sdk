@@ -125,7 +125,7 @@ class Envbee:
             )
             raise e
 
-    def _cache_variable(self, variable_name: str, variable_content: dict):
+    def _cache_variable(self, variable_name: str, variable_value):
         """Cache a variable locally for future retrieval.
 
         Args:
@@ -138,14 +138,14 @@ class Envbee:
                 appname=self.__api_key, appauthor="envbee"
             )
             with Cache(app_cache_dir) as reference:
-                reference.set(variable_name, variable_content)
+                reference.set(variable_name, variable_value)
             logger.debug("Variable %s cached successfully.", variable_name)
         except Exception as e:
             logger.error(
                 "Error caching variable %s: %s", variable_name, e, exc_info=True
             )
 
-    def _get_variable_from_cache(self, variable_name: str) -> str | int | bool:
+    def _get_variable_value_from_cache(self, variable_name: str) -> any:
         """Retrieve a variable's content from the local cache.
 
         Args:
@@ -160,12 +160,12 @@ class Envbee:
                 appname=self.__api_key, appauthor="envbee"
             )
             with Cache(app_cache_dir) as reference:
-                content = reference.get(variable_name)
-            if content:
+                value = reference.get(variable_name)
+            if value:
                 logger.debug("Variable %s retrieved from cache.", variable_name)
             else:
                 logger.warning("Variable %s not found in cache.", variable_name)
-            return content.get("value")
+            return value
         except Exception as e:
             logger.error(
                 "Error retrieving variable %s from cache: %s",
@@ -174,47 +174,7 @@ class Envbee:
                 exc_info=True,
             )
 
-    def _get_variables_from_cache(
-        self, offset: int = 0, limit: int = 50
-    ) -> tuple[list[dict], Metadata]:
-        """Retrieve cached variables and their values with pagination.
-
-        Args:
-            offset (int): The starting index of elements to return. Defaults to 0.
-            limit (int): The maximum number of elements to return. Defaults to None (no limit).
-
-        Returns:
-            list[dict]: A list of dictionaries containing names and values of cached variables.
-        """
-        logger.debug(
-            "Retrieving variables from cache with offset=%d, limit=%s", offset, limit
-        )
-        try:
-            app_cache_dir = platformdirs.user_cache_dir(
-                appname=self.__api_key, appauthor="envbee"
-            )
-            with Cache(app_cache_dir) as reference:
-                all_values = [
-                    {"name": k, "content": reference[k]} for k in list(reference)
-                ]
-
-                # Apply offset and limit
-                paginated_values = (
-                    all_values[offset : offset + limit]
-                    if limit is not None
-                    else all_values[offset:]
-                )
-
-                return paginated_values, Metadata(limit, offset, len(all_values))
-        except Exception as e:
-            logger.error(
-                "Error retrieving variables from cache: %s",
-                e,
-                exc_info=True,
-            )
-            return [], Metadata()
-
-    def get_variable(self, variable_name: str) -> str | int | bool:
+    def get(self, variable_name: str) -> any:
         """Retrieve a variable's value by its name.
 
         This method attempts to fetch the variable from the API, and if it fails, it retrieves
@@ -227,20 +187,21 @@ class Envbee:
             The value of the variable.
         """
         logger.debug("Fetching variable: %s", variable_name)
-        url_path = f"/v1/variables-values/{variable_name}"
+        url_path = f"/v1/variables-values-by-name/{variable_name}/content"
         hmac_header = self._generate_hmac_header(url_path)
         final_url = f"{self.__base_url}{url_path}"
         try:
             response = self._send_request(final_url, hmac_header)
-            self._cache_variable(variable_name, response.get("content"))
+            value = response.get("value")
+            self._cache_variable(variable_name, value)
             logger.debug("Variable %s fetched successfully.", variable_name)
-            return response.get("content").get("value")
+            return value
         except Exception:
             logger.warning(
                 "Failed to fetch variable %s from API. Falling back to cache.",
                 variable_name,
             )
-            return self._get_variable_from_cache(variable_name)
+            return self._get_variable_value_from_cache(variable_name)
 
     def get_variables(
         self, offset: int = None, limit: int = None
@@ -272,11 +233,8 @@ class Envbee:
             result_json = self._send_request(final_url, hmac_header)
             metadata = Metadata(**result_json.get("metadata", {}))
             data = result_json.get("data", [])
-            for v in data:
-                self._cache_variable(v["name"], v["content"])
-            logger.debug("Fetched and cached %d variables.", len(data))
+            logger.debug("Fetched %d variables.", len(data))
             return data, metadata
         except Exception as e:
             logger.warning("Failed to fetch variables from API: %s", e, exc_info=True)
-            logger.warning("Falling back to cached variables.")
-            return self._get_variables_from_cache()
+            raise
