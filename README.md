@@ -23,7 +23,7 @@ pip install envbee-sdk
 To use the envbee SDK, instantiate the envbee class with your API credentials:
 
 ```python
-from envbee_sdk.main import Envbee
+from envbee_sdk import Envbee
 
 eb = Envbee(api_key="your_api_key", api_secret=b"your_api_secret")
 
