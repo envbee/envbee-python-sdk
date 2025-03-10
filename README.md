@@ -39,6 +39,8 @@ variables, metadata = eb.get_variables()
 The root logger name is "envbee_sdk". You can configure the default logging level for the SDK and handle logs as needed. Here's an example of how to set up basic logging for your application using the SDK:
 
 ```python
+import logging
+
 # Basic logging configuration for your application
 logging.basicConfig(
     level=logging.ERROR,  # Set default log level for the root logger

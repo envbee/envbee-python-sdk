@@ -30,20 +30,27 @@ logger = logging.getLogger(__name__)
 class Envbee:
     __BASE_URL: str = "https://api.envbee.dev"
 
+    __base_url: str
+    __api_key: str
+    __api_secret: bytes
+
     def __init__(
-        self, api_key: str, api_secret: bytes | bytearray, base_url: str = None
+        self, api_key: str, api_secret: bytes | bytearray | str, base_url: str = None
     ) -> None:
         """Initialize the API client with necessary credentials.
 
         Args:
             api_key (str): The unique identifier for the API.
-            api_secret (bytes | bytearray): The secret key used for authenticating API requests.
+            api_secret (bytes | bytearray | str): The secret key used for authenticating API requests.
             base_url (str, optional): The base URL for the API. Defaults to https://api.envbee.dev URL if not provided.
         """
         logger.debug("Initializing Envbee client.")
         self.__base_url = base_url or self.__BASE_URL
         self.__api_key = api_key
-        self.__api_secret = api_secret
+        if isinstance(api_secret, str):
+            self.__api_secret = api_secret.encode()
+        else:
+            self.__api_secret = api_secret
         logger.info("Envbee client initialized with base URL: %s", self.__base_url)
 
     def _generate_hmac_header(self, url_path: str) -> str:
