@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="envbee-sdk",
-    version="1.7.2",
+    version="1.7.3",
     author="envbee",
     author_email="info@envbee.dev",
     description="envbee SDK for Python",
@@ -21,5 +21,5 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.8",
 )

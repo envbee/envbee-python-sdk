@@ -16,6 +16,8 @@ import json
 import logging
 import time
 
+from importlib.metadata import PackageNotFoundError, version
+
 import platformdirs
 import requests
 from diskcache import Cache
@@ -25,6 +27,14 @@ from .metadata import Metadata
 from .utils import add_querystring
 
 logger = logging.getLogger(__name__)
+
+
+try:
+    __version__ = version(
+        "envbee_sdk"
+    )  # Usa el nombre del paquete como en `pyproject.toml`
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 
 class Envbee:
@@ -103,9 +113,14 @@ class Envbee:
         """
         logger.debug("Sending request to URL: %s", url)
         try:
+            headers = {
+                "Authorization": hmac_header,
+                "x-api-key": self.__api_key,
+                "x-envbee-client": f"python-sdk/{__version__}",
+            }
             response = requests.get(
                 url,
-                headers={"Authorization": hmac_header, "x-api-key": self.__api_key},
+                headers=headers,
                 timeout=timeout,
             )
             logger.debug("Received response with status code: %s", response.status_code)
