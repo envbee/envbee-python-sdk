@@ -13,6 +13,7 @@ setup(
         "diskcache",
         "platformdirs",
         "requests",
+        "cryptography",
     ],
     include_package_data=True,
     packages=find_packages(exclude=["*.pyc", "__pycache__", "*/__pycache__"]),
