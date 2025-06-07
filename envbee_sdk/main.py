@@ -14,18 +14,23 @@ import base64
 import hashlib
 import hmac
 import json
-from hashlib import sha256
 import logging
 import time
+from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 
 import platformdirs
 import requests
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from diskcache import Cache
 
 from .constants import ENC_PREFIX
-from .exceptions.envbee_exceptions import RequestError, RequestTimeoutError
+from .exceptions.envbee_exceptions import (
+    DecryptionError,
+    RequestError,
+    RequestTimeoutError,
+)
 from .metadata import Metadata
 from .utils import add_querystring
 
@@ -125,7 +130,7 @@ class Envbee:
         """
         if isinstance(value, str) and value.startswith(ENC_PREFIX):
             if self.__aesgcm is None:
-                raise RuntimeError(
+                raise DecryptionError(
                     "Encrypted variable received, but no encryption key was configured."
                 )
 
@@ -137,9 +142,14 @@ class Envbee:
                     nonce, ciphertext_and_tag, associated_data=None
                 )
                 return decrypted.decode()
+            except InvalidTag as e:
+                logger.warning("Decryption failed due to invalid key or tampered data.")
+                raise DecryptionError(
+                    "Decryption failed. Invalid key or corrupted data.", cause=e
+                )
             except Exception as e:
                 logger.error("Failed to decrypt variable: %s", str(e))
-                raise RuntimeError("Decryption failed. Invalid key or corrupted data.")
+                raise
         return value
 
     def _send_request(self, url: str, hmac_header: str, timeout: int = 2):
@@ -272,6 +282,9 @@ class Envbee:
 
             # Decrypt only when returning
             return self.__maybe_decrypt(value)
+        except DecryptionError:
+            # Don't fallback to cache; re-raise the error
+            raise
         except Exception:
             logger.warning(
                 "Failed to fetch variable %s from API. Falling back to cache.",

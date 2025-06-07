@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from envbee_sdk.exceptions.envbee_exceptions import DecryptionError
 from envbee_sdk.main import ENC_PREFIX, Envbee
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class Test(TestCase):
 
         eb = Envbee("1__local", b"key---1")  # No enc_key
 
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(DecryptionError) as ctx:
             eb.get("SensitiveVar")
 
         self.assertIn(
