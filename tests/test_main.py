@@ -1,9 +1,18 @@
+# ------------------------------------
+# Copyright (c) envbee
+# Licensed under the MIT License.
+# ------------------------------------
+
+import base64
 import logging
+import os
 from dataclasses import asdict
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from envbee_sdk.main import Envbee
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from envbee_sdk.main import ENC_PREFIX, Envbee
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +36,69 @@ class Test(TestCase):
 
         eb = Envbee("1__local", b"key---1")
         self.assertEqual("Value1", eb.get("Var1"))
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_get_variable_value_encrypted_from_CLI(self, mock_get: MagicMock):
+        """Test decrypting a variable encrypted by the CLI."""
+        key = "0123456789abcdef0123456789abcdef"
+        encrypted_value = "envbee:enc:v1:d0ktKfDJB4CIPbRmXfOmVlCU8ZCx4fl/2eZtkjgbqJy3g569ZGDEqnVOP94pDfw2Jg=="
+        plaintext = "super-secret-password"
+
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"value": encrypted_value}
+
+        eb = Envbee("1__local", b"key---1", enc_key=key)
+        result = eb.get("EncryptedVar")
+
+        self.assertEqual(result, plaintext)
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_get_variable_value_encrypted(self, mock_get: MagicMock):
+        """Test getting an encrypted variable and decrypting it correctly."""
+        key = b"0123456789abcdef0123456789abcdef"  # 32 bytes key
+        aesgcm = AESGCM(key)
+        nonce = os.urandom(12)  # 12 bytes nonce for AES-GCM
+        plaintext = b"SuperSecretValue"
+
+        # Encrypt: ciphertext includes the tag at the end
+        ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data=None)
+
+        # Format: nonce + ciphertext+tag
+        encoded = base64.b64encode(nonce + ciphertext).decode()
+        encrypted_value = ENC_PREFIX + encoded
+
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"value": encrypted_value}
+
+        eb = Envbee("1__local", b"key---1", enc_key=key)
+        result = eb.get("EncryptedVar")
+
+        self.assertEqual(result, plaintext.decode())
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_encrypted_value_without_key_raises(self, mock_get: MagicMock):
+        """Test that an encrypted value raises an error if no encryption key is provided."""
+        key = b"0123456789abcdef0123456789abcdef"
+        aesgcm = AESGCM(key)
+        nonce = os.urandom(12)
+        plaintext = b"NoKeyErrorExpected"
+        ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data=None)
+
+        encoded = base64.b64encode(nonce + ciphertext).decode()
+        encrypted_value = ENC_PREFIX + encoded
+
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"value": encrypted_value}
+
+        eb = Envbee("1__local", b"key---1")  # No enc_key
+
+        with self.assertRaises(RuntimeError) as ctx:
+            eb.get("SensitiveVar")
+
+        self.assertIn(
+            "Encrypted variable received, but no encryption key was configured",
+            str(ctx.exception),
+        )
 
     @patch("envbee_sdk.main.requests.get")
     def test_get_variable_cache(self, mock_get: MagicMock):

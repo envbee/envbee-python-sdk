@@ -1,3 +1,9 @@
+# ------------------------------------
+# Copyright (c) envbee
+# Licensed under the MIT License.
+# ------------------------------------
+
+
 class RequestTimeoutError(Exception):
     def __init__(self, message="Request timed out"):
         self.message = message
