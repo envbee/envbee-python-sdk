@@ -1,13 +1,17 @@
-# envbee SDK
+# envbee Python SDK
 
-envbee SDK is a Python client for interacting with the envbee API (see https://envbee.dev). This SDK provides methods to retrieve variables and manage caching for improved performance.
+envbee SDK is a Python client for interacting with the envbee API (see [https://envbee.dev](https://envbee.dev)).
+This SDK provides methods to retrieve variables and manage caching for improved performance.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Usage](#usage)
 - [Methods](#methods)
-- [Testing](#testing)
+- [Encryption](#encryption)
+- [Logging](#logging)
+- [Caching](#caching)
+- [API Documentation](#api-documentation)
 - [License](#license)
 
 ## Installation
@@ -20,60 +24,75 @@ pip install envbee-sdk
 
 ## Usage
 
-To use the envbee SDK, instantiate the envbee class with your API credentials:
+Instantiate the `Envbee` class with your API credentials:
 
 ```python
 from envbee_sdk import Envbee
 
-eb = Envbee(api_key="your_api_key", api_secret=b"your_api_secret")
+client = Envbee(
+    api_key="your_api_key",
+    api_secret=b"your_api_secret",
+    enc_key=b"32-byte-encryption-key-goes-here"  # optional, could be a string or a 32 bytes buffer
+)
 
 # Retrieve a variable
-value = eb.get("VariableName")
+value = client.get("VariableName")
 
 # Retrieve multiple variables
-variables, metadata = eb.get_variables()
+variables, metadata = client.get_variables()
 ```
 
-### Logging
+## Methods
 
-The root logger name is "envbee_sdk". You can configure the default logging level for the SDK and handle logs as needed. Here's an example of how to set up basic logging for your application using the SDK:
+- `get(variable_name: str) -> any`: fetch a variable value.
+- `get_variables(offset: int = None, limit: int = None) -> tuple[list[dict], Metadata]`: fetch multiple variable definitions with pagination.
+
+## Encryption
+
+Some variables stored in envbee are encrypted using AES-256-GCM (via the [cryptography](https://cryptography.io/en/latest/) library). Encrypted values are prefixed with `envbee:enc:v1:`.
+
+- If an encrypted variable is fetched and you provide a correct decryption key (`enc_key`), the SDK will decrypt it automatically.
+- If no key or a wrong key is provided, a `RuntimeError` will be raised on decryption.
+- The encryption key is never sent to the API; all decryption is performed locally.
+- Cached values are stored exactly as received from the API (encrypted or plain-text).
+
+Example with encryption key:
+
+```python
+client = Envbee(
+    api_key="your_api_key",
+    api_secret=b"your_api_secret",
+    enc_key=b"32-byte-encryption-key-goes-here"
+)
+```
+
+## Logging
+
+Configure logging as needed. The SDK logger name is `envbee_sdk`. Example:
 
 ```python
 import logging
 
-# Basic logging configuration for your application
-logging.basicConfig(
-    level=logging.ERROR,  # Set default log level for the root logger
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],  # Send logs to stdout
-)
+logging.basicConfig(level=logging.ERROR)
 
-# Get the SDK logger (specific to envbee_sdk)
 sdk_logger = logging.getLogger("envbee_sdk")
-sdk_logger.setLevel(logging.DEBUG)  # You can set the SDK logger to DEBUG for detailed logs
+sdk_logger.setLevel(logging.DEBUG)  # for detailed logs
 
 # Example usage within the SDK
 sdk_logger.debug("This is a debug message from the SDK.")
 sdk_logger.info("Informational message from the SDK.")
 ```
 
-## Methods
-
-### `get(variable_name: str) -> any`
-
-Fetches the value of a variable by its name. If the API request fails, it retrieves the value from the cache.
-
-### `get_variables(offset: int = None, limit: int = None) -> tuple[list[dict], Metadata]`
-
-Fetches a list of variables from the API with optional pagination parameters.
-
 ## Caching
 
-The SDK uses a local cache to store variable values as a failsafe mechanism. The cache is updated with each successful endpoint request and serves as a fallback when the network or Internet connection is temporarily unavailable. Currently, the data is stored unencrypted, but encryption will be implemented in future releases.
+The SDK caches variables locally to provide fallback data when offline or the API is unreachable. The cache is updated after each successful API call. Local cache stores variables as received from the API, encrypted or plain.
+
+- Encryption key is never stored in cache or sent to API.
+- All encryption/decryption happens locally with AES-256-GCM.
 
 ## API Documentation
 
-For more details on the available API endpoints and their usage, check [the official API docs](https://docs.envbee.dev).
+For more information on envbee API endpoints and usage, visit the [official API documentation](https://docs.envbee.dev).
 
 ## License
 

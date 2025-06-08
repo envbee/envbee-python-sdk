@@ -1,3 +1,8 @@
+# ------------------------------------
+# Copyright (c) envbee
+# Licensed under the MIT License.
+# ------------------------------------
+
 import logging
 
 

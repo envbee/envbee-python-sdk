@@ -1,3 +1,4 @@
 diskcache
 platformdirs
 requests
+cryptography

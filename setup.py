@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="envbee-sdk",
-    version="1.7.3",
+    version="1.8.0",
     author="envbee",
     author_email="info@envbee.dev",
     description="envbee SDK for Python",
@@ -13,6 +13,7 @@ setup(
         "diskcache",
         "platformdirs",
         "requests",
+        "cryptography",
     ],
     include_package_data=True,
     packages=find_packages(exclude=["*.pyc", "__pycache__", "*/__pycache__"]),

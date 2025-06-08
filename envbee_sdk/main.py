@@ -10,19 +10,27 @@ This class provides methods to interact with the envbee API, allowing users to r
 and manage environment variables through secure authenticated requests.
 """
 
+import base64
 import hashlib
 import hmac
 import json
 import logging
 import time
-
+from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 
 import platformdirs
 import requests
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from diskcache import Cache
 
-from .exceptions.envbee_exceptions import RequestError, RequestTimeoutError
+from .constants import ENC_PREFIX
+from .exceptions.envbee_exceptions import (
+    DecryptionError,
+    RequestError,
+    RequestTimeoutError,
+)
 from .metadata import Metadata
 from .utils import add_querystring
 
@@ -30,9 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 try:
-    __version__ = version(
-        "envbee_sdk"
-    )  # Usa el nombre del paquete como en `pyproject.toml`
+    __version__ = version("envbee_sdk")  # Use package name as `pyproject.toml`
 except PackageNotFoundError:
     __version__ = "unknown"
 
@@ -43,9 +49,14 @@ class Envbee:
     __base_url: str
     __api_key: str
     __api_secret: bytes
+    __aesgcm: AESGCM | None
 
     def __init__(
-        self, api_key: str, api_secret: bytes | bytearray | str, base_url: str = None
+        self,
+        api_key: str,
+        api_secret: bytes | bytearray | str,
+        base_url: str = None,
+        enc_key: bytes | bytearray | str | None = None,
     ) -> None:
         """Initialize the API client with necessary credentials.
 
@@ -53,6 +64,9 @@ class Envbee:
             api_key (str): The unique identifier for the API.
             api_secret (bytes | bytearray | str): The secret key used for authenticating API requests.
             base_url (str, optional): The base URL for the API. Defaults to https://api.envbee.dev URL if not provided.
+            enc_key (bytes | bytearray | str | None, optional): The client-side encryption key used to decrypt variable values.
+                Must be 16, 24, or 32 bytes long to match AES-GCM key requirements.
+                If not provided, encrypted variables cannot be decrypted.
         """
         logger.debug("Initializing Envbee client.")
         self.__base_url = base_url or self.__BASE_URL
@@ -61,6 +75,18 @@ class Envbee:
             self.__api_secret = api_secret.encode()
         else:
             self.__api_secret = api_secret
+
+        if enc_key:
+            if isinstance(enc_key, str):
+                enc_key = sha256(enc_key.encode()).digest()
+
+            if len(enc_key) not in {16, 24, 32}:  # AES key sizes in bytes
+                raise ValueError("Encryption key must be 16, 24, or 32 bytes long")
+
+            self.__aesgcm = AESGCM(enc_key)
+        else:
+            self.__aesgcm = None
+
         logger.info("Envbee client initialized with base URL: %s", self.__base_url)
 
     def _generate_hmac_header(self, url_path: str) -> str:
@@ -92,6 +118,39 @@ class Envbee:
         except Exception as e:
             logger.error("Error generating HMAC header: %s", e, exc_info=True)
             raise
+
+    def __maybe_decrypt(self, value: str) -> str:
+        """Attempt to decrypt the variable if it's encrypted with the supported format.
+
+        Args:
+            value (str): The encrypted or plain value.
+
+        Returns:
+            str: The decrypted value if encrypted, or the original value.
+        """
+        if isinstance(value, str) and value.startswith(ENC_PREFIX):
+            if self.__aesgcm is None:
+                raise DecryptionError(
+                    "Encrypted variable received, but no encryption key was configured."
+                )
+
+            try:
+                raw = base64.b64decode(value[len(ENC_PREFIX) :])
+                nonce = raw[:12]  # AES-GCM uses a 12-byte nonce
+                ciphertext_and_tag = raw[12:]
+                decrypted = self.__aesgcm.decrypt(
+                    nonce, ciphertext_and_tag, associated_data=None
+                )
+                return decrypted.decode()
+            except InvalidTag as e:
+                logger.warning("Decryption failed due to invalid key or tampered data.")
+                raise DecryptionError(
+                    "Decryption failed. Invalid key or corrupted data.", cause=e
+                )
+            except Exception as e:
+                logger.error("Failed to decrypt variable: %s", str(e))
+                raise
+        return value
 
     def _send_request(self, url: str, hmac_header: str, timeout: int = 2):
         """Send a GET request to the specified URL with the given HMAC header.
@@ -200,13 +259,14 @@ class Envbee:
         """Retrieve a variable's value by its name.
 
         This method attempts to fetch the variable from the API, and if it fails, it retrieves
-        the value from the local cache.
+        the value from the local cache. If the value is encrypted (e.g., starts with __ENC_PREFIX),
+        it will be decrypted using the provided encryption key.
 
         Args:
             variable_name (str): The name of the variable to retrieve.
 
         Returns:
-            The value of the variable.
+            The decrypted or plain value of the variable.
         """
         logger.debug("Fetching variable: %s", variable_name)
         url_path = f"/v1/variables-values-by-name/{variable_name}/content"
@@ -215,30 +275,37 @@ class Envbee:
         try:
             response = self._send_request(final_url, hmac_header)
             value = response.get("value")
-            self._cache_variable(variable_name, value)
             logger.debug("Variable %s fetched successfully.", variable_name)
-            return value
+
+            # Cache encrypted or plain as-is
+            self._cache_variable(variable_name, value)
+
+            # Decrypt only when returning
+            return self.__maybe_decrypt(value)
+        except DecryptionError:
+            # Don't fallback to cache; re-raise the error
+            raise
         except Exception:
             logger.warning(
                 "Failed to fetch variable %s from API. Falling back to cache.",
                 variable_name,
             )
-            return self._get_variable_value_from_cache(variable_name)
+            cached = self._get_variable_value_from_cache(variable_name)
+            return self.__maybe_decrypt(cached)
 
     def get_variables(
         self, offset: int = None, limit: int = None
     ) -> tuple[list[dict], Metadata]:
         """Retrieve a list of variables with optional pagination.
 
-        This method fetches variables from the API and caches them locally.
-        If an error happens, value is retrieved from cache.
+        This method fetches variables from the API.
 
         Args:
             offset (int, optional): The starting point for fetching variables.
             limit (int, optional): The maximum number of variables to retrieve.
 
         Returns:
-            list[dict]: A list of dictionaries containing variables and their values.
+            list[dict]: A list of dictionaries containing variables definition.
         """
         logger.debug("Fetching variables with offset=%s, limit=%s", offset, limit)
         url_path = "/v1/variables"
