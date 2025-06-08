@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2025-06-08
+
+### Added
+
+- Ability to desencrypt variable values using AES-256-GCM
+
+## [1.7.2] - 2025-03-09 - beta release
+
+### Added
+
+- Allow use a `str` type on `api_secret` parameter
+
+## [1.7.1] - 2025-03-01 - beta release
+
+### Added
+
+- Match version number with node SDK
+
+## [1.4.0] - 2024-11-28 - beta release
+
+### Added
+
+- Add version path
+
 ## [1.3.0] - 2024-11-19 - beta release
 
 ### Added
