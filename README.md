@@ -7,6 +7,7 @@ This SDK provides methods to retrieve variables and manage caching for improved 
 
 - [Installation](#installation)
 - [Usage](#usage)
+- [Environment Variables](#environment-variables)
 - [Methods](#methods)
 - [Encryption](#encryption)
 - [Logging](#logging)
@@ -24,7 +25,7 @@ pip install envbee-sdk
 
 ## Usage
 
-Instantiate the `Envbee` class with your API credentials:
+Instantiate the `Envbee` class with your API credentials (either as parameters or via environment variables):
 
 ```python
 from envbee_sdk import Envbee
@@ -41,6 +42,34 @@ value = client.get("VariableName")
 # Retrieve multiple variables
 variables, metadata = client.get_variables()
 ```
+
+## Environment Variables
+
+Instead of passing credentials and configuration parameters directly when instantiating the `Envbee` client, you can optionally use environment variables:
+
+- `ENVBEE_API_KEY`: your API key (required if `api_key` is not passed explicitly)
+- `ENVBEE_API_SECRET`: your API secret (required if `api_secret` is not passed explicitly)
+- `ENVBEE_ENC_KEY`: optional encryption key for decrypting encrypted variables
+
+Example using environment variables:
+
+```bash
+export ENVBEE_API_KEY="your_api_key"
+export ENVBEE_API_SECRET="your_api_secret"
+export ENVBEE_ENC_KEY="32-byte-encryption-key-goes-here"
+```
+
+Then initialize the client with no parameters:
+
+```python
+from envbee_sdk import Envbee
+
+client = Envbee()
+
+value = client.get("VariableName")
+```
+
+Explicit parameters take precedence over environment variables if both are provided.
 
 ## Methods
 
