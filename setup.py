@@ -1,6 +1,10 @@
 from setuptools import find_packages, setup
 
-from envbee_sdk import __version__
+import sys
+
+sys.path[0:0] = ["envbee_sdk"]
+
+from version import __version__  # type: ignore # noqa: E402
 
 setup(
     name="envbee-sdk",
@@ -18,7 +22,7 @@ setup(
         "cryptography",
     ],
     include_package_data=True,
-    packages=find_packages(exclude=["*.pyc", "__pycache__", "*/__pycache__"]),
+    packages=find_packages(exclude=["*.pyc", "__pycache__", "*/__pycache__", "tests"]),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
