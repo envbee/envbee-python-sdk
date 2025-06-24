@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.1] - 2025-06-24
+
+### Added
+
+- feat: allow SDK configuration via environment variables
+
 ## [1.8.0] - 2025-06-08
 
 ### Added

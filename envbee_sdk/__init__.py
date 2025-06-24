@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # ------------------------------------
 
-__version__ = "1.8.0"
+__version__ = "1.8.1"
 
 from .logging_config import setup_default_logging
 from .main import Envbee  # noqa: F401
