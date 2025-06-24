@@ -1,8 +1,9 @@
 name: Publish Python Package
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
 
 jobs:
   test:
@@ -28,36 +29,28 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -v
 
-  publish-to-pypi:
+  semantic-release:
     needs: test
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out the code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for semantic-release to see all git history
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
-      - name: Install build tools
+      - name: Install tools
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install python-semantic-release build twine
 
-      - name: Clean build artifacts
-        run: rm -rf dist build *.egg-info
-
-      - name: Build package
-        run: python -m build
-
-      - name: Check metadata
-        run: twine check dist/*
-
-      - name: Publish package to PyPI
+      - name: Run semantic-release
+        run: semantic-release publish
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          python -m twine upload dist/*
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PYPI_API_TOKEN: ${{ secrets.PYPI_TOKEN }}
