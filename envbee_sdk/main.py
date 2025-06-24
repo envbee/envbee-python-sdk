@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import time
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
@@ -44,18 +45,22 @@ except PackageNotFoundError:
 
 
 class Envbee:
+    __ENVAR_API_KEY = "ENVBEE_API_KEY"
+    __ENVAR_API_SECRET = "ENVBEE_API_SECRET"
+    __ENVAR_API_URL = "ENVBEE_API_URL"
+    __ENVAR_ENC_KEY = "ENVBEE_ENC_KEY"
     __BASE_URL: str = "https://api.envbee.dev"
 
     __base_url: str
-    __api_key: str
-    __api_secret: bytes
+    __api_key: str | None
+    __api_secret: bytes | None
     __aesgcm: AESGCM | None
 
     def __init__(
         self,
-        api_key: str,
-        api_secret: bytes | bytearray | str,
-        base_url: str = None,
+        api_key: str | None = None,
+        api_secret: bytes | bytearray | str | None = None,
+        base_url: str | None = None,
         enc_key: bytes | bytearray | str | None = None,
     ) -> None:
         """Initialize the API client with necessary credentials.
@@ -69,12 +74,34 @@ class Envbee:
                 If not provided, encrypted variables cannot be decrypted.
         """
         logger.debug("Initializing Envbee client.")
-        self.__base_url = base_url or self.__BASE_URL
-        self.__api_key = api_key
+
+        ENVBEE_API_KEY = os.getenv(self.__ENVAR_API_KEY)
+        ENVBEE_API_SECRET = os.getenv(self.__ENVAR_API_SECRET)
+        ENVBEE_API_URL: str = os.getenv(self.__ENVAR_API_URL, self.__BASE_URL)
+        ENVBEE_ENC_KEY = os.getenv(self.__ENVAR_ENC_KEY)
+
+        self.__base_url = base_url or ENVBEE_API_URL
+        self.__api_key = api_key or ENVBEE_API_KEY
+        if self.__api_key is None:
+            raise ValueError(
+                "An api_key must be provided as a parameter or by setting ENVBEE_API_KEY environment variable"
+            )
+
+        if api_secret is None:
+            api_secret = ENVBEE_API_SECRET
+
         if isinstance(api_secret, str):
             self.__api_secret = api_secret.encode()
         else:
             self.__api_secret = api_secret
+
+        if self.__api_secret is None:
+            raise ValueError(
+                "An api_secret must be provided as a parameter or by setting ENVBEE_API_SECRET environment variable"
+            )
+
+        if enc_key is None:
+            enc_key = ENVBEE_ENC_KEY
 
         if enc_key:
             if isinstance(enc_key, str):
@@ -86,6 +113,7 @@ class Envbee:
             self.__aesgcm = AESGCM(enc_key)
         else:
             self.__aesgcm = None
+            logger.debug("No encryption key provided")
 
         logger.info("Envbee client initialized with base URL: %s", self.__base_url)
 
