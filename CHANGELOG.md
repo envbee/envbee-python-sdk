@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.2] - 2025-06-25
+
+### Added
+
+- test: add basic matrix test script and a test case for numeric values
+
 ## [1.8.1] - 2025-06-24
 
 ### Added

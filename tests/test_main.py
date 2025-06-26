@@ -39,6 +39,15 @@ class Test(TestCase):
         self.assertEqual("Value1", eb.get("Var1"))
 
     @patch("envbee_sdk.main.requests.get")
+    def test_get_variable_value_number(self, mock_get: MagicMock):
+        """Test getting a variable, which is a number, successfully from the API."""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"value": 1234}
+
+        eb = Envbee("1__local", b"key---1")
+        self.assertEqual(1234, eb.get("Var1234"))
+
+    @patch("envbee_sdk.main.requests.get")
     def test_get_variable_value_encrypted_from_CLI(self, mock_get: MagicMock):
         """Test decrypting a variable encrypted by the CLI."""
         key = "0123456789abcdef0123456789abcdef"
