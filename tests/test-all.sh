@@ -10,7 +10,7 @@ for version in "${PYTHON_VERSIONS[@]}"; do
   echo "🔹 Testing with Python $version..."
 
   docker run --rm \
-    -v "$PWD":/app \
+    -v "$PWD/..":/app \
     -w /app \
     python:$version \
     bash -c "
