@@ -6,14 +6,14 @@
 import base64
 import logging
 import os
-from dataclasses import asdict
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from envbee_sdk.exceptions.envbee_exceptions import DecryptionError
 from envbee_sdk.main import ENC_PREFIX, Envbee
+from envbee_sdk.model import Metadata, VariableType
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +140,115 @@ class Test(TestCase):
         variables, md = eb.get_variables()
         self.assertEqual(
             "desc1",
-            list(filter(lambda x: x["name"] == "VAR1", variables))[0]["description"],
+            list(filter(lambda x: x.name == "VAR1", variables))[0].description,
         )
-        self.assertAlmostEqual({"limit": 1, "offset": 10, "total": 100}, asdict(md))
+        self.assertEqual(Metadata(limit=1, offset=10, total=100), md)
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_get_variables_values(self, mock_get: MagicMock):
+        """Test getting multiple variables with their values successfully from the API."""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "metadata": {"limit": 2, "offset": 0, "total": 2},
+            "data": [
+                {
+                    "id": 1,
+                    "variable_id": 1,
+                    "content": { "value": "Value1" }
+                },
+                {
+                    "id": 2,
+                    "variable_id": 2,
+                    "content": { "value": True }
+                },
+            ],
+        }
+
+        eb = Envbee("1__local", b"key---1")
+        variables, md = eb.get_variables_values()
+        self.assertEqual(
+            "Value1",
+            list(filter(lambda x: x.variable_id == 1, variables))[0].content.get("value"),
+        )
+        self.assertEqual(Metadata(limit=2, offset=0, total=2), md)
+
+    def test_get_variables(self):
+        """Test getting variables with values and filling environment variables."""
+        with patch("envbee_sdk.main.requests.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = {
+                "metadata": {"limit": 2, "offset": 0, "total": 2},
+                "data": [
+                    {
+                        "id": 1,
+                        "name": "VAR1",
+                        "type": VariableType.STRING.value,
+                        "description": "desc1",
+                    },
+                    {
+                        "id": 2,
+                        "name": "VAR2",
+                        "type": VariableType.BOOLEAN.value,
+                        "description": "desc2"
+                    },
+                ],
+            }
+
+            eb = Envbee("1__local", b"key---1")
+            variables, md = eb.get_variables()
+
+            self.assertEqual(
+                "desc1",
+                list(filter(lambda x: x.name == "VAR1", variables))[0].description
+            )
+            self.assertEqual(Metadata(limit=2, offset=0, total=2), md)
+
+    def test_fill_env_vars(self):
+        """Test filling environment variables from the API."""
+
+        response1 = Mock()
+        response1.status_code = 200
+        response1.json.return_value = {
+            "metadata": {"limit": 2, "offset": 0, "total": 2},
+            "data": [
+                {
+                    "id": 1,
+                    "name": "VAR1",
+                    "type": VariableType.STRING.value,
+                    "description": "desc1",
+                },
+                {
+                    "id": 2,
+                    "name": "VAR2",
+                    "type": VariableType.BOOLEAN.value,
+                    "description": "desc2",
+                },
+            ],
+        }
+
+        response2 = Mock()
+        response2.status_code = 200
+        response2.json.return_value = {
+            "metadata": {"limit": 2, "offset": 0, "total": 2},
+            "data": [
+                {
+                    "id": 1,
+                    "variable_id": 1,
+                    "content": { "value": "Value1" }
+                },
+                {
+                    "id": 2,
+                    "variable_id": 2,
+                    "content": { "value": True }
+                },
+            ],
+        }
+
+        with patch("envbee_sdk.main.requests.get") as mock_get:
+            mock_get.side_effect = [response1, response2]
+
+            eb = Envbee("1__local", b"key---1")
+            eb.fill_env_vars()
+
+            self.assertEqual(os.environ.get("VAR1"), "Value1")
+            self.assertEqual(os.environ.get("VAR2"), "True")

@@ -19,7 +19,9 @@ import os
 import time
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
+from envbee_sdk.model import Variable, VariableValue, Metadata
 import platformdirs
 import requests
 from cryptography.exceptions import InvalidTag
@@ -32,7 +34,6 @@ from .exceptions.envbee_exceptions import (
     RequestError,
     RequestTimeoutError,
 )
-from .metadata import Metadata
 from .utils import add_querystring
 
 logger = logging.getLogger(__name__)
@@ -131,7 +132,7 @@ class Envbee:
         """
         logger.debug("Generating HMAC header for URL path: %s", url_path)
         try:
-            hmac_obj = hmac.new(self.__api_secret, digestmod=hashlib.sha256)
+            hmac_obj = hmac.new(self.__api_secret, digestmod=hashlib.sha256) # type: ignore - __api_secret is guaranteed to be bytes at this point
             current_time = str(int(time.time() * 1000))
             hmac_obj.update(current_time.encode("utf-8"))
             hmac_obj.update(b"GET")
@@ -254,7 +255,7 @@ class Envbee:
                 "Error caching variable %s: %s", variable_name, e, exc_info=True
             )
 
-    def _get_variable_value_from_cache(self, variable_name: str) -> any:
+    def _get_variable_value_from_cache(self, variable_name: str) -> Any:
         """Retrieve a variable's content from the local cache.
 
         Args:
@@ -283,7 +284,7 @@ class Envbee:
                 exc_info=True,
             )
 
-    def get(self, variable_name: str) -> any:
+    def get(self, variable_name: str) -> Any:
         """Retrieve a variable's value by its name.
 
         This method attempts to fetch the variable from the API, and if it fails, it retrieves
@@ -322,8 +323,8 @@ class Envbee:
             return self.__maybe_decrypt(cached)
 
     def get_variables(
-        self, offset: int = None, limit: int = None
-    ) -> tuple[list[dict], Metadata]:
+        self, offset: int | None = None, limit: int | None = None
+    ) -> tuple[list[Variable], Metadata]:
         """Retrieve a list of variables with optional pagination.
 
         This method fetches variables from the API.
@@ -349,9 +350,105 @@ class Envbee:
         try:
             result_json = self._send_request(final_url, hmac_header)
             metadata = Metadata(**result_json.get("metadata", {}))
-            data = result_json.get("data", [])
+            data = [Variable(**item) for item in result_json.get("data", [])]
             logger.debug("Fetched %d variables.", len(data))
             return data, metadata
         except Exception as e:
             logger.warning("Failed to fetch variables from API: %s", e, exc_info=True)
             raise
+
+    def get_variables_values(self, offset: int | None = None, limit: int | None = None) -> tuple[list[VariableValue], Metadata]:
+        """Retrieve a list of variables with their values.
+
+        This method fetches variables and their values from the API.
+
+        Returns:
+            list[dict]: A list of dictionaries containing variables definition and values.
+        """
+        logger.debug("Fetching variables with values with offset=%s, limit=%s.", offset, limit)
+        url_path = "/v1/variables-values"
+        params = {}
+        if offset:
+            params["offset"] = offset
+        if limit:
+            params["limit"] = limit
+        url_path = add_querystring(url_path, params)
+        hmac_header = self._generate_hmac_header(url_path)
+        final_url = f"{self.__base_url}{url_path}"
+        try:
+            result_json = self._send_request(final_url, hmac_header)
+            metadata = Metadata(**result_json.get("metadata", {}))
+            data = [VariableValue(**item) for item in result_json.get("data", [])]
+            logger.debug("Fetched %d variables with values.", len(data))
+            return data, metadata
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch variables with values from API: %s", e, exc_info=True
+            )
+            raise
+
+    def fill_env_vars(self, variable_names: list[str] | None = None) -> None:
+        """Fetch and set multiple variables as environment variables.
+
+        This method retrieves all the variable's values from the API and sets only the specified ones in 
+        variable_name parameter, as environment variables in the current process. If a variable is 
+        encrypted, it will be decrypted before being set.
+
+        Args:
+            variable_names (list[str]): A list of variable names to set as environment variables in the current process. If None, it will set all variables.
+        """
+        logger.debug("Filling environment variables: %s", variable_names)
+        try:
+            all_variables_definition = self.get_variables()[0]
+            all_variables_values = self.get_variables_values()[0]
+            for variable in all_variables_definition:
+                name = variable.name
+                try:
+                    if variable_names and name not in variable_names:
+                        logger.debug(
+                            "Skipping variable %s as it's not in the specified list.", name
+                        )
+                        continue
+                    variable_id = variable.id
+                    value = [v for v in all_variables_values if v.id == variable_id][0]
+                    if value is not None:
+                        # Environment variables must be strings, so we convert the value to a string before setting it
+                        os.environ[name] = str(self.__maybe_decrypt(value.content.get("value", "")))
+                        logger.debug("Set environment variable: %s", name)
+                    else:
+                        logger.warning(
+                            "Variable %s returned None and was not set as an environment variable.",
+                            name,
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Error fetching or setting variable %s: %s", name, e, exc_info=True
+                    )
+        except Exception:
+            try:
+                app_cache_dir = platformdirs.user_cache_dir(
+                    appname=self.__api_key, appauthor="envbee"
+                )
+                with Cache(app_cache_dir) as reference:
+                    for name in reference.iterkeys():
+                        if variable_names and name not in variable_names:
+                            logger.debug(
+                                "Skipping variable %s as it's not in the specified list.", name
+                            )
+                            continue
+
+                        value = reference.get(name)
+                        if value is not None:
+                            # Environment variables must be strings, so we convert the value to a string before setting it
+                            if isinstance(value, str):
+                                value = self.__maybe_decrypt(value)
+                            os.environ[str(name)] = str(value)
+                            logger.debug("Set environment variable: %s", name)
+                        else:
+                            logger.warning(
+                                "Variable %s returned None and was not set as an environment variable.",
+                                name,
+                            )
+            except Exception as e:
+                logger.error("Failed to fill all environment variables from API and Cache", e, exc_info=True)
+                raise 
