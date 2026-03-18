@@ -6,6 +6,7 @@
 import base64
 import logging
 import os
+import tempfile
 from unittest import TestCase
 from unittest.mock import MagicMock, Mock, patch
 
@@ -251,4 +252,40 @@ class Test(TestCase):
             eb.fill_env_vars()
 
             self.assertEqual(os.environ.get("VAR1"), "Value1")
+            self.assertEqual(os.environ.get("VAR2"), "True")
+
+    def test_fill_env_vars_cache_fallback(self):
+        """Test filling environment variables from cache when API calls fail."""
+        with tempfile.TemporaryDirectory() as tmp_cache_dir, patch(
+            "envbee_sdk.main.platformdirs.user_cache_dir", return_value=tmp_cache_dir
+        ):
+            eb = Envbee("1__local_fill_cache", b"key---1")
+
+            # Prime cache with values using successful get() calls.
+            with patch("envbee_sdk.main.requests.get") as mock_get:
+                response_var1 = Mock()
+                response_var1.status_code = 200
+                response_var1.json.return_value = {"value": "ValueFromCache1"}
+
+                response_var2 = Mock()
+                response_var2.status_code = 200
+                response_var2.json.return_value = {"value": True}
+
+                mock_get.side_effect = [response_var1, response_var2]
+                self.assertEqual("ValueFromCache1", eb.get("VAR1"))
+                self.assertEqual(True, eb.get("VAR2"))
+
+            # Ensure values are set from cache when the API fails.
+            os.environ.pop("VAR1", None)
+            os.environ.pop("VAR2", None)
+
+            with patch("envbee_sdk.main.requests.get") as mock_get:
+                failed_response = Mock()
+                failed_response.status_code = 500
+                failed_response.text = "Server Error"
+                mock_get.return_value = failed_response
+
+                eb.fill_env_vars()
+
+            self.assertEqual(os.environ.get("VAR1"), "ValueFromCache1")
             self.assertEqual(os.environ.get("VAR2"), "True")
