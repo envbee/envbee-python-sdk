@@ -44,7 +44,9 @@ from envbee_sdk import Envbee
 client = Envbee(
     api_key="your_api_key",
     api_secret=b"your_api_secret",
-    enc_key=b"32-byte-encryption-key-goes-here"  # optional, could be a string or a 32 bytes buffer
+    enc_key=b"32-byte-encryption-key-goes-here",  # optional, could be a string or a 32 bytes buffer
+    cache_path="/tmp/envbee-cache",  # optional custom cache path
+    timeout_seconds=4  # optional request timeout in seconds (default 4)
 )
 
 # Retrieve a variable
@@ -219,6 +221,7 @@ Properties:
 - Cached values are stored exactly as returned by the API.
 - Encryption keys are **never stored in cache**.
 - Decryption always happens locally.
+- If disk cache is unavailable (permission/path issues), the SDK logs a warning and falls back to in-memory cache for the current process.
 
 ## API Documentation
 

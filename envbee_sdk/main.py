@@ -63,6 +63,8 @@ class Envbee:
         api_secret: bytes | bytearray | str | None = None,
         base_url: str | None = None,
         enc_key: bytes | bytearray | str | None = None,
+        cache_path: str | None = None,
+        timeout_seconds: float | int | None = None,
     ) -> None:
         """Initialize the API client with necessary credentials.
 
@@ -73,6 +75,10 @@ class Envbee:
             enc_key (bytes | bytearray | str | None, optional): The client-side encryption key used to decrypt variable values.
                 Must be 16, 24, or 32 bytes long to match AES-GCM key requirements.
                 If not provided, encrypted variables cannot be decrypted.
+            cache_path (str | None, optional): Custom cache directory path. If not provided,
+                the platform default cache path is used.
+            timeout_seconds (float | int | None, optional): Request timeout in seconds.
+                Defaults to 4 when not provided.
         """
         logger.debug("Initializing Envbee client.")
 
@@ -116,7 +122,47 @@ class Envbee:
             self.__aesgcm = None
             logger.debug("No encryption key provided")
 
+        resolved_timeout = timeout_seconds
+        try:
+            parsed_timeout = float(resolved_timeout) if resolved_timeout is not None else 4.0
+        except (TypeError, ValueError):
+            parsed_timeout = 4.0
+        self.__timeout_seconds = parsed_timeout if parsed_timeout > 0 else 4.0
+
+        self.__memory_cache: dict[str, Any] = {}
+        self.__cache_path: str | None = None
+        self.__use_memory_cache = False
+        self._initialize_cache(cache_path)
+
         logger.info("Envbee client initialized with base URL: %s", self.__base_url)
+
+    def _initialize_cache(self, cache_path: str | None) -> None:
+        """Initialize the cache backend and fall back to memory when disk cache is unavailable."""
+        resolved_cache_path = cache_path or platformdirs.user_cache_dir(
+            appname=self.__api_key, appauthor="envbee"
+        )
+
+        try:
+            os.makedirs(resolved_cache_path, exist_ok=True)
+            probe_file = os.path.join(
+                resolved_cache_path,
+                f".envbee-write-test-{os.getpid()}-{int(time.time() * 1000)}",
+            )
+            with open(probe_file, "w", encoding="utf-8") as probe:
+                probe.write("ok")
+            os.remove(probe_file)
+
+            self.__cache_path = resolved_cache_path
+            self.__use_memory_cache = False
+            logger.debug("Disk cache enabled at %s", self.__cache_path)
+        except Exception as err:
+            self.__cache_path = None
+            self.__use_memory_cache = True
+            logger.warning(
+                "Cache path %s is unavailable. Falling back to in-memory cache only.",
+                resolved_cache_path,
+                exc_info=err,
+            )
 
     def _generate_hmac_header(self, url_path: str) -> str:
         """Generate an HMAC authentication header for the specified URL path.
@@ -181,7 +227,7 @@ class Envbee:
                 raise
         return value
 
-    def _send_request(self, url: str, hmac_header: str, timeout: int = 2):
+    def _send_request(self, url: str, hmac_header: str, timeout: float | None = None):
         """Send a GET request to the specified URL with the given HMAC header.
 
         This method performs an authenticated API request and handles response status codes.
@@ -190,7 +236,7 @@ class Envbee:
         Args:
             url (str): The URL to which the GET request will be sent.
             hmac_header (str): The HMAC authentication header for the request.
-            timeout (int, optional): The maximum time to wait for the request to complete (in seconds). Defaults to 2.
+            timeout (float | None, optional): The maximum time to wait for the request to complete (in seconds). Defaults to the client timeout.
 
         Returns:
             dict: The JSON response from the API if the request is successful.
@@ -206,10 +252,11 @@ class Envbee:
                 "x-api-key": self.__api_key,
                 "x-envbee-client": f"python-sdk/{__version__}",
             }
+            request_timeout = timeout if timeout is not None else self.__timeout_seconds
             response = requests.get(
                 url,
                 headers=headers,
-                timeout=timeout,
+                timeout=request_timeout,
             )
             logger.debug("Received response with status code: %s", response.status_code)
             if response.status_code == 200:
@@ -225,9 +272,10 @@ class Envbee:
                     response.status_code, f"Failed request: {response.text}"
                 )
         except requests.exceptions.Timeout:
-            logger.error("Request to %s timed out after %d seconds", url, timeout)
+            request_timeout = timeout if timeout is not None else self.__timeout_seconds
+            logger.error("Request to %s timed out after %.3f seconds", url, request_timeout)
             raise RequestTimeoutError(
-                f"Request to {url} timed out after {timeout} seconds"
+                f"Request to {url} timed out after {request_timeout} seconds"
             )
         except Exception as e:
             logger.critical(
@@ -243,17 +291,23 @@ class Envbee:
             variable_content (str): The content of the variable to cache.
         """
         logger.debug("Caching variable: %s", variable_name)
+        if self.__use_memory_cache or self.__cache_path is None:
+            self.__memory_cache[variable_name] = variable_value
+            logger.debug("Variable %s cached in memory.", variable_name)
+            return
+
         try:
-            app_cache_dir = platformdirs.user_cache_dir(
-                appname=self.__api_key, appauthor="envbee"
-            )
-            with Cache(app_cache_dir) as reference:
+            with Cache(self.__cache_path) as reference:
                 reference.set(variable_name, variable_value)
             logger.debug("Variable %s cached successfully.", variable_name)
-        except Exception as e:
-            logger.error(
-                "Error caching variable %s: %s", variable_name, e, exc_info=True
+        except Exception as err:
+            logger.warning(
+                "Disk cache unavailable while caching %s. Using in-memory cache only.",
+                variable_name,
+                exc_info=err,
             )
+            self.__use_memory_cache = True
+            self.__memory_cache[variable_name] = variable_value
 
     def _get_variable_value_from_cache(self, variable_name: str) -> Any:
         """Retrieve a variable's content from the local cache.
@@ -265,24 +319,30 @@ class Envbee:
             str: The cached content of the variable, or None if not found.
         """
         logger.debug("Retrieving variable from cache: %s", variable_name)
+        if self.__use_memory_cache or self.__cache_path is None:
+            value = self.__memory_cache.get(variable_name)
+            if value is not None:
+                logger.debug("Variable %s retrieved from in-memory cache.", variable_name)
+            else:
+                logger.warning("Variable %s not found in cache.", variable_name)
+            return value
+
         try:
-            app_cache_dir = platformdirs.user_cache_dir(
-                appname=self.__api_key, appauthor="envbee"
-            )
-            with Cache(app_cache_dir) as reference:
+            with Cache(self.__cache_path) as reference:
                 value = reference.get(variable_name)
-            if value:
+            if value is not None:
                 logger.debug("Variable %s retrieved from cache.", variable_name)
             else:
                 logger.warning("Variable %s not found in cache.", variable_name)
             return value
-        except Exception as e:
-            logger.error(
-                "Error retrieving variable %s from cache: %s",
+        except Exception as err:
+            logger.warning(
+                "Disk cache unavailable while retrieving %s. Falling back to in-memory cache.",
                 variable_name,
-                e,
-                exc_info=True,
+                exc_info=err,
             )
+            self.__use_memory_cache = True
+            return self.__memory_cache.get(variable_name)
 
     def get(self, variable_name: str) -> Any:
         """Retrieve a variable's value by its name.
@@ -390,8 +450,8 @@ class Envbee:
     def fill_env_vars(self, variable_names: list[str] | None = None) -> None:
         """Fetch and set multiple variables as environment variables.
 
-        This method retrieves all the variable's values from the API and sets only the specified ones in 
-        variable_name parameter, as environment variables in the current process. If a variable is 
+        This method retrieves all the variable's values from the API and sets only the specified ones in
+        variable_name parameter, as environment variables in the current process. If a variable is
         encrypted, it will be decrypted before being set.
 
         Args:
@@ -425,30 +485,35 @@ class Envbee:
                         "Error fetching or setting variable %s: %s", name, e, exc_info=True
                     )
         except Exception:
-            try:
-                app_cache_dir = platformdirs.user_cache_dir(
-                    appname=self.__api_key, appauthor="envbee"
-                )
-                with Cache(app_cache_dir) as reference:
-                    for name in reference.iterkeys():
-                        if variable_names and name not in variable_names:
-                            logger.debug(
-                                "Skipping variable %s as it's not in the specified list.", name
-                            )
-                            continue
+            if self.__use_memory_cache or self.__cache_path is None:
+                cache_items = list(self.__memory_cache.items())
+            else:
+                try:
+                    with Cache(self.__cache_path) as reference:
+                        cache_items = [(name, reference.get(name)) for name in reference.iterkeys()]
+                except Exception as err:
+                    logger.warning(
+                        "Disk cache unavailable while filling env vars. Falling back to in-memory cache.",
+                        exc_info=err,
+                    )
+                    self.__use_memory_cache = True
+                    cache_items = list(self.__memory_cache.items())
 
-                        value = reference.get(name)
-                        if value is not None:
-                            # Environment variables must be strings, so we convert the value to a string before setting it
-                            if isinstance(value, str):
-                                value = self.__maybe_decrypt(value)
-                            os.environ[str(name)] = str(value)
-                            logger.debug("Set environment variable: %s", name)
-                        else:
-                            logger.warning(
-                                "Variable %s returned None and was not set as an environment variable.",
-                                name,
-                            )
-            except Exception as e:
-                logger.error("Failed to fill all environment variables from API and Cache", e, exc_info=True)
-                raise 
+            for name, value in cache_items:
+                if variable_names and name not in variable_names:
+                    logger.debug(
+                        "Skipping variable %s as it's not in the specified list.", name
+                    )
+                    continue
+
+                if value is not None:
+                    # Environment variables must be strings, so we convert the value to a string before setting it
+                    if isinstance(value, str):
+                        value = self.__maybe_decrypt(value)
+                    os.environ[str(name)] = str(value)
+                    logger.debug("Set environment variable from cache: %s", name)
+                else:
+                    logger.warning(
+                        "Variable %s returned None and was not set as an environment variable.",
+                        name,
+                    )

@@ -289,3 +289,55 @@ class Test(TestCase):
 
             self.assertEqual(os.environ.get("VAR1"), "ValueFromCache1")
             self.assertEqual(os.environ.get("VAR2"), "True")
+
+
+    def test_custom_cache_path(self):
+        """Test that a custom cache_path can be used."""
+        with tempfile.TemporaryDirectory() as tmp_cache_dir, patch("envbee_sdk.main.requests.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = {"value": "ValueCustomPath"}
+
+            eb = Envbee("1__local_custom_cache", b"key---1", cache_path=tmp_cache_dir)
+            self.assertEqual("ValueCustomPath", eb.get("VAR_CUSTOM_PATH"))
+            self.assertTrue(os.path.isdir(tmp_cache_dir))
+
+    @patch("envbee_sdk.main.requests.get")
+    @patch("envbee_sdk.main.os.makedirs", side_effect=PermissionError("No permission"))
+    def test_memory_cache_fallback_when_disk_cache_unavailable(
+        self, _mock_makedirs: MagicMock, mock_get: MagicMock
+    ):
+        """Test that cache falls back to in-memory when disk cache is unavailable."""
+        response_ok = Mock()
+        response_ok.status_code = 200
+        response_ok.json.return_value = {"value": "ValueFromMemoryCache"}
+
+        response_fail = Mock()
+        response_fail.status_code = 500
+        response_fail.text = "Server Error"
+
+        mock_get.side_effect = [response_ok, response_fail]
+
+        eb = Envbee("1__local_memory_cache", b"key---1")
+        self.assertEqual("ValueFromMemoryCache", eb.get("VAR_MEMORY_CACHE"))
+        self.assertEqual("ValueFromMemoryCache", eb.get("VAR_MEMORY_CACHE"))
+
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_timeout_seconds_override(self, mock_get: MagicMock):
+        """Test that timeout_seconds is passed to requests."""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"value": "Value1"}
+
+        eb = Envbee("1__local", b"key---1", timeout_seconds=7)
+        self.assertEqual("Value1", eb.get("Var1"))
+        self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 7)
+
+    @patch("envbee_sdk.main.requests.get")
+    def test_timeout_seconds_default_is_4(self, mock_get: MagicMock):
+        """Test that default request timeout is 4 seconds."""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"value": "Value1"}
+
+        eb = Envbee("1__local", b"key---1")
+        self.assertEqual("Value1", eb.get("Var1"))
+        self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 4.0)
