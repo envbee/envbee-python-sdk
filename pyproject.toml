@@ -3,8 +3,6 @@ requires = ["setuptools", "wheel", "build", "python-semantic-release"]
 build-backend = "setuptools.build_meta"
 
 [tool.semantic_release]
-version_variable = "envbee_sdk/version.py:__version__"
-branch = "main"
-upload_to_pypi = true
+version_variables = ["envbee_sdk/version.py:__version__"]
 build_command = "python -m build"
 changelog_file = "CHANGELOG.md"

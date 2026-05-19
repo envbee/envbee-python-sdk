@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      expected_version:
+        description: Required with publish_existing_version on a branch; for example 1.9.0
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -69,6 +74,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: semantic-release version
+
+      - name: Validate existing version target
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_existing_version == true
+        run: |
+          package_version="$(python -c 'import pathlib, re; text = pathlib.Path("envbee_sdk/version.py").read_text(); print(re.search(r"__version__\\s*=\\s*[\"'\\'']([^\"'\\'']+)[\"'\\'']", text).group(1))')"
+          expected_version="${{ inputs.expected_version }}"
+
+          if [ -z "$expected_version" ] && [ "${{ github.ref_type }}" = "tag" ]; then
+            expected_version="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [ -z "$expected_version" ]; then
+            echo "::error::Set expected_version when publishing an existing version from a branch."
+            exit 1
+          fi
+
+          if [ "$package_version" != "$expected_version" ]; then
+            echo "::error::Package version $package_version does not match expected version $expected_version."
+            exit 1
+          fi
 
       - name: Build existing distribution
         if: github.event_name == 'workflow_dispatch' && inputs.publish_existing_version == true
