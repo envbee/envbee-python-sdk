@@ -3,4 +3,6 @@ twine
 setuptools
 tqdm
 build
+# python-semantic-release==10.5.3 accesses Actor.name_email_regex, removed by newer GitPython releases.
+GitPython==3.1.45
 python-semantic-release==10.5.3
