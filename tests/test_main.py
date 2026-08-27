@@ -205,7 +205,7 @@ class Test(TestCase):
             self.assertEqual(Metadata(limit=2, offset=0, total=2), md)
 
     def test_fill_env_vars(self):
-        """Test filling environment variables from the API."""
+        """Test filling multiple variables matched by their variable IDs."""
 
         response1 = Mock()
         response1.status_code = 200
@@ -233,12 +233,12 @@ class Test(TestCase):
             "metadata": {"limit": 2, "offset": 0, "total": 2},
             "data": [
                 {
-                    "id": 1,
+                    "id": 101,
                     "variable_id": 1,
                     "content": { "value": "Value1" }
                 },
                 {
-                    "id": 2,
+                    "id": 202,
                     "variable_id": 2,
                     "content": { "value": True }
                 },
@@ -253,6 +253,89 @@ class Test(TestCase):
 
             self.assertEqual(os.environ.get("VAR1"), "Value1")
             self.assertEqual(os.environ.get("VAR2"), "True")
+
+    def test_fill_env_vars_skips_definition_without_associated_value(self):
+        """Test missing values are warned about without blocking other variables."""
+        definitions_response = Mock()
+        definitions_response.status_code = 200
+        definitions_response.json.return_value = {
+            "metadata": {"limit": 2, "offset": 0, "total": 2},
+            "data": [
+                {"id": 1, "name": "PRESENT_VAR", "type": VariableType.STRING.value, "description": None},
+                {"id": 2, "name": "MISSING_VAR", "type": VariableType.STRING.value, "description": None},
+            ],
+        }
+        values_response = Mock()
+        values_response.status_code = 200
+        values_response.json.return_value = {
+            "metadata": {"limit": 1, "offset": 0, "total": 1},
+            "data": [{"id": 100, "variable_id": 1, "content": {"value": "present"}}],
+        }
+
+        os.environ.pop("PRESENT_VAR", None)
+        os.environ.pop("MISSING_VAR", None)
+        with patch("envbee_sdk.main.requests.get", side_effect=[definitions_response, values_response]):
+            eb = Envbee("1__local", b"key---1")
+            with self.assertLogs("envbee_sdk.main", level="WARNING") as logs:
+                eb.fill_env_vars()
+
+        self.assertEqual(os.environ.get("PRESENT_VAR"), "present")
+        self.assertNotIn("MISSING_VAR", os.environ)
+        self.assertIn("Variable MISSING_VAR has no associated value and was not exported.", logs.output[0])
+
+    def test_fill_env_vars_respects_variable_names_filter(self):
+        """Test only requested variables are exported."""
+        definitions_response = Mock()
+        definitions_response.status_code = 200
+        definitions_response.json.return_value = {
+            "metadata": {"limit": 2, "offset": 0, "total": 2},
+            "data": [
+                {"id": 1, "name": "INCLUDED_VAR", "type": VariableType.STRING.value, "description": None},
+                {"id": 2, "name": "EXCLUDED_VAR", "type": VariableType.STRING.value, "description": None},
+            ],
+        }
+        values_response = Mock()
+        values_response.status_code = 200
+        values_response.json.return_value = {
+            "metadata": {"limit": 2, "offset": 0, "total": 2},
+            "data": [
+                {"id": 11, "variable_id": 1, "content": {"value": "included"}},
+                {"id": 22, "variable_id": 2, "content": {"value": "excluded"}},
+            ],
+        }
+
+        os.environ.pop("INCLUDED_VAR", None)
+        os.environ.pop("EXCLUDED_VAR", None)
+        with patch("envbee_sdk.main.requests.get", side_effect=[definitions_response, values_response]):
+            Envbee("1__local", b"key---1").fill_env_vars(["INCLUDED_VAR"])
+
+        self.assertEqual(os.environ.get("INCLUDED_VAR"), "included")
+        self.assertNotIn("EXCLUDED_VAR", os.environ)
+
+    def test_fill_env_vars_decrypts_encrypted_values(self):
+        """Test encrypted values are decrypted before being exported."""
+        key = b"0123456789abcdef0123456789abcdef"
+        nonce = os.urandom(12)
+        ciphertext = AESGCM(key).encrypt(nonce, b"decrypted-value", associated_data=None)
+        encrypted_value = ENC_PREFIX + base64.b64encode(nonce + ciphertext).decode()
+
+        definitions_response = Mock()
+        definitions_response.status_code = 200
+        definitions_response.json.return_value = {
+            "metadata": {"limit": 1, "offset": 0, "total": 1},
+            "data": [{"id": 1, "name": "ENCRYPTED_ENV_VAR", "type": VariableType.STRING.value, "description": None}],
+        }
+        values_response = Mock()
+        values_response.status_code = 200
+        values_response.json.return_value = {
+            "metadata": {"limit": 1, "offset": 0, "total": 1},
+            "data": [{"id": 10, "variable_id": 1, "content": {"value": encrypted_value}}],
+        }
+
+        with patch("envbee_sdk.main.requests.get", side_effect=[definitions_response, values_response]):
+            Envbee("1__local", b"key---1", enc_key=key).fill_env_vars()
+
+        self.assertEqual(os.environ.get("ENCRYPTED_ENV_VAR"), "decrypted-value")
 
     def test_fill_env_vars_cache_fallback(self):
         """Test filling environment variables from cache when API calls fail."""

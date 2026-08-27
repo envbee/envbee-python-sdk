@@ -21,12 +21,13 @@ from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
-from envbee_sdk.model import Variable, VariableValue, Metadata
 import platformdirs
 import requests
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from diskcache import Cache
+
+from envbee_sdk.model import Metadata, Variable, VariableValue
 
 from .constants import ENC_PREFIX
 from .exceptions.envbee_exceptions import (
@@ -99,6 +100,8 @@ class Envbee:
 
         if isinstance(api_secret, str):
             self.__api_secret = api_secret.encode()
+        elif api_secret is not None:
+            self.__api_secret = bytes(api_secret)
         else:
             self.__api_secret = api_secret
 
@@ -187,7 +190,7 @@ class Envbee:
             content_hash = hashlib.md5()
             content_hash.update(content)
             hmac_obj.update(content_hash.hexdigest().encode("utf-8"))
-            auth_header = "HMAC %s:%s" % (current_time, hmac_obj.hexdigest())
+            auth_header = f"HMAC {current_time}:{hmac_obj.hexdigest()}"
             logger.debug("HMAC header generated successfully.")
             return auth_header
         except Exception as e:
@@ -281,7 +284,7 @@ class Envbee:
             logger.critical(
                 "Unexpected error during request to %s: %s", url, e, exc_info=True
             )
-            raise e
+            raise
 
     def _cache_variable(self, variable_name: str, variable_value):
         """Cache a variable locally for future retrieval.
@@ -461,6 +464,9 @@ class Envbee:
         try:
             all_variables_definition = self.get_variables()[0]
             all_variables_values = self.get_variables_values()[0]
+            values_by_variable_id = {
+                value.variable_id: value for value in all_variables_values
+            }
             for variable in all_variables_definition:
                 name = variable.name
                 try:
@@ -469,17 +475,17 @@ class Envbee:
                             "Skipping variable %s as it's not in the specified list.", name
                         )
                         continue
-                    variable_id = variable.id
-                    value = [v for v in all_variables_values if v.id == variable_id][0]
-                    if value is not None:
-                        # Environment variables must be strings, so we convert the value to a string before setting it
-                        os.environ[name] = str(self.__maybe_decrypt(value.content.get("value", "")))
-                        logger.debug("Set environment variable: %s", name)
-                    else:
+                    value = values_by_variable_id.get(variable.id)
+                    if value is None:
                         logger.warning(
-                            "Variable %s returned None and was not set as an environment variable.",
+                            "Variable %s has no associated value and was not exported.",
                             name,
                         )
+                        continue
+
+                    # Environment variables must be strings, so we convert the value to a string before setting it
+                    os.environ[name] = str(self.__maybe_decrypt(value.content.get("value", "")))
+                    logger.debug("Set environment variable: %s", name)
                 except Exception as e:
                     logger.error(
                         "Error fetching or setting variable %s: %s", name, e, exc_info=True
