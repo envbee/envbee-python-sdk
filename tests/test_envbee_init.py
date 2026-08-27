@@ -1,5 +1,6 @@
 import os
 import unittest
+
 from envbee_sdk.main import Envbee
 
 
@@ -21,6 +22,14 @@ class TestEnvbeeInit(unittest.TestCase):
             enc_key="encryption-key",
         )
         self.assertIsInstance(client, Envbee)
+
+    def test_init_with_bytearray_api_secret(self):
+        """Test bytearray API secrets are normalized for HMAC authentication."""
+        client = Envbee(api_key="key123", api_secret=bytearray(b"secret123"))
+
+        header = client._generate_hmac_header("/v1/variables")
+
+        self.assertTrue(header.startswith("HMAC "))
 
     def test_init_from_environment_variables(self):
         os.environ["ENVBEE_API_KEY"] = "key-env"
