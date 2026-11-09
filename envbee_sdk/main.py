@@ -25,7 +25,7 @@ import platformdirs
 import requests
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from diskcache import Cache
+from diskcache_community import Cache, SafeDisk
 
 from envbee_sdk.model import Metadata, Variable, VariableValue
 
@@ -331,7 +331,7 @@ class Envbee:
             return value
 
         try:
-            with Cache(self.__cache_path) as reference:
+            with Cache(self.__cache_path, disk=SafeDisk.with_options(on_error="miss")) as reference:
                 value = reference.get(variable_name)
             if value is not None:
                 logger.debug("Variable %s retrieved from cache.", variable_name)
@@ -495,7 +495,7 @@ class Envbee:
                 cache_items = list(self.__memory_cache.items())
             else:
                 try:
-                    with Cache(self.__cache_path) as reference:
+                    with Cache(self.__cache_path, disk=SafeDisk.with_options(on_error="miss")) as reference:
                         cache_items = [(name, reference.get(name)) for name in reference.iterkeys()]
                 except Exception as err:
                     logger.warning(

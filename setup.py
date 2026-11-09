@@ -16,7 +16,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/envbee/envbee-python-sdk",
     install_requires=[
-        "diskcache",
+        "diskcache-community>=5.8.4",
         "platformdirs",
         "requests",
         "cryptography",
