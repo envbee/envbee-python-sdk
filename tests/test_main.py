@@ -11,6 +11,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, Mock, patch
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from diskcache_community import Cache, Disk
 
 from envbee_sdk.exceptions.envbee_exceptions import DecryptionError
 from envbee_sdk.main import ENC_PREFIX, Envbee
@@ -373,6 +374,31 @@ class Test(TestCase):
             self.assertEqual(os.environ.get("VAR1"), "ValueFromCache1")
             self.assertEqual(os.environ.get("VAR2"), "True")
 
+    def test_cache_fallback_does_not_load_pickled_entries(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, patch("envbee_sdk.main.requests.get") as mock_get:
+            cache_dir = os.path.join(tmp_dir, "cache")
+            marker = os.path.join(tmp_dir, "marker")
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = {"value": "ValueFromApi"}
+
+            eb = Envbee("1__local_pickled_cache", b"key---1", cache_path=cache_dir)
+            self.assertEqual("ValueFromApi", eb.get("PICKLED_VAR1"))
+            self.assertEqual("ValueFromApi", eb.get("PICKLED_VAR2"))
+
+            with Cache(cache_dir, disk=Disk) as other_writer:
+                other_writer.set("PICKLED_VAR1", _PlantedValue(marker))
+                other_writer.set("PICKLED_VAR2", _PlantedValue(marker))
+
+            mock_get.return_value.status_code = 500
+            mock_get.return_value.text = "Server Error"
+            os.environ.pop("PICKLED_VAR2", None)
+
+            self.assertIsNone(eb.get("PICKLED_VAR1"))
+            eb.fill_env_vars()
+
+            self.assertNotIn("PICKLED_VAR2", os.environ)
+            self.assertFalse(os.path.exists(marker))
+
 
     def test_custom_cache_path(self):
         """Test that a custom cache_path can be used."""
@@ -424,3 +450,17 @@ class Test(TestCase):
         eb = Envbee("1__local", b"key---1")
         self.assertEqual("Value1", eb.get("Var1"))
         self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 4.0)
+
+
+def _write_marker(path):
+    with open(path, "w", encoding="utf-8") as marker:
+        marker.write("ran")
+    return "PlantedValue"
+
+
+class _PlantedValue:
+    def __init__(self, path):
+        self.path = path
+
+    def __reduce__(self):
+        return (_write_marker, (self.path,))

@@ -1,4 +1,4 @@
-diskcache
+diskcache-community>=5.8.4
 platformdirs
 requests
 cryptography
